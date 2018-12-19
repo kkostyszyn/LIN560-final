@@ -1,20 +1,4 @@
-"""
-FST for Japanese verb conjugation. Use paradigm() for a full listing. Currently functional for:
 
-plain affirmative present 
-plain affirmative past
-plain negative present
-plain negative past
-polite affirmative present
-polite_affirmative_past
-polite_negative_present
-polite_negative_past
-conditional_plain_affirmative
-conditional_plain_negative
-conditional_formal_affirmative
-conditional_formal_negative
-
-"""
 import pynini
 import functools 
 
@@ -31,7 +15,7 @@ T = functools.partial(pynini.transducer, input_token_type="utf8", output_token_t
 
 vowels = (A("a") | A("e") | A("i") | A("o") | A("u"))
 
-consonant = (A("b") | A("c") | A("d") | A("g") | A("h") | A("k") | A("m") | A("n") | A("r") | A("s") | A("ʃ") | A("t") | A("C") | A("w") | A("y") | A("[ts]") | A("[ch]"))
+consonant = (A("b") | A("c") | A("d") | A("f") |  A("g") | A("h") | A("k") | A("m") | A("n") | A("r") | A("s") | A("ʃ") | A("t") | A("C") | A("w") | A("y") | A("z") | A("[ts]") | A("[ch]"))
 
 #in general, words with -iru or -eru belong to group 2, but some verbs
 #such as 'hairu' belong to group 1. these exceptions will be given the
@@ -63,18 +47,38 @@ tokens2 = [A("kaku"),
     A("kakureru"),
     A("kawaku"),
     A("kau"),
-    A("maCu"),
+    A("matsu"),
+    A("tatsu"),
     A("nuru"),
     A("omou"),
     A("shinu"),
     A("tobu"),
     A("toru"),
     A("yomu")]
+    
+tokens3 = [A("akirameru"),
+    A("arau"),
+    A("aruku"),
+    A("atsumaru"),
+    A("atsumeru"),
+    A("au"),
+    A("chigau"),
+    A("fueru"),
+    A("erabu"),
+    A("gozaru"),
+    A("maniau"),
+    A("you"),
+    A("yobu"),
+    A("yaku")]
 
 
 #######MORPHOLOGICAL PROCESSES######
 
-#extract root
+#extract root - fix some symbols
+shi_IPA = pynini.cdrewrite(T("sh", "ʃ"), sigmaStar, sigmaStar, sigmaStar)
+ts_IPA = pynini.cdrewrite(T("ts", "[ts]"), sigmaStar, sigmaStar, sigmaStar)
+ch_IPA = pynini.cdrewrite(T("ch", "[ch]"), sigmaStar, sigmaStar, sigmaStar)
+
 kuru = pynini.cdrewrite(T("kuru", "[kuru]"), "[BOS]", "[EOS]", sigmaStar)
 suru = pynini.cdrewrite(T("suru", "[suru]"), "[BOS]", "[EOS]", sigmaStar)
 
@@ -83,6 +87,8 @@ ru_drop = pynini.cdrewrite(ru_root, sigmaStar, "[EOS]", sigmaStar)
 
 u_root = (T("u1", "1") | T("u", "1")).optimize()
 u_drop = pynini.cdrewrite(u_root, sigmaStar, "[EOS]", sigmaStar) 
+
+root = (shi_IPA @ ts_IPA @ ch_IPA @ kuru @ suru @ ru_drop @ u_drop).optimize()
 
 #PLAIN
 #affirmative present - returns the form itself
@@ -139,7 +145,8 @@ ru_polite_ap_changes = (T("2","masu"))
 ru_polite_ap = pynini.cdrewrite(ru_polite_ap_changes, sigmaStar, "[EOS]", sigmaStar)
 u_polite_ap_changes = (T("1","imasu"))
 u_polite_ap = pynini.cdrewrite(u_polite_ap_changes, sigmaStar, "[EOS]", sigmaStar)
-polite_affirmative_present = (kuru_polite_ap @ suru_polite_ap @ ru_polite_ap @ u_polite_ap).optimize()
+gozaimasu = pynini.cdrewrite(T("r", ""), "goza", "imasu[EOS]", sigmaStar)
+polite_affirmative_present = (kuru_polite_ap @ suru_polite_ap @ ru_polite_ap @ u_polite_ap @ gozaimasu).optimize()
 
 #affirmative past
 #-masu plus -ita
@@ -160,8 +167,13 @@ polite_negative_present = (polite_np @ polite_np_fix).optimize()
 polite_negative_past = (polite_negative_present + T("", " deʃita")).optimize()
 
 #######TE FORM #######
-te_a= pynini.cdrewrite(T("a", "e"), "t", "[EOS]", sigmaStar)
-te_affirmative = (plain_affirmative_past @ te_a).optimize()
+te_a_env = (A("t") | A("nd"))
+te_a= pynini.cdrewrite(T("a", "e"), consonant, "[EOS]", sigmaStar)
+#for the form 'yaite', the surface form stayed 'yatte' despite the 
+#affirmative for and the underlying 'yaktte', so this one had to be
+#manually overwritten 
+yaite = pynini.cdrewrite(T("kt", "i"), "[BOS]ya", "te", sigmaStar)
+te_affirmative = (plain_affirmative_past @ te_a @ yaite).optimize()
 
 te_n = pynini.cdrewrite(T("atta", "ute"), "nak", "[EOS]", sigmaStar)
 te_negative = (plain_negative_past @ te_n).optimize()
@@ -205,11 +217,16 @@ volitional_plain = (kuru_vp @ suru_vp @ ru_vp @ u_vp).optimize()
 #formal
 kuru_vf = pynini.cdrewrite(T("[kuru]", "kimashoo"), "[BOS]", "[EOS]", sigmaStar)
 suru_vf = pynini.cdrewrite(T("[suru]", "ʃimashoo"), "[BOS]", "[EOS]", sigmaStar)
-ru_vf_changes = (T("2", "mashoo"))
+ru_vf_changes = (T("2", "maʃoo"))
 ru_vf = pynini.cdrewrite(ru_vf_changes, sigmaStar, "[EOS]", sigmaStar)
-u_vf_changes = (T("1", "imashoo"))
+u_vf_changes = (T("1", "imaʃoo"))
 u_vf = pynini.cdrewrite(u_vf_changes, sigmaStar, "[EOS]", sigmaStar)
-volitional_formal = (kuru_vf @ suru_vf @ ru_vf @ u_vf).optimize()
+#for gozaimashoo, I originally intended to only delete the 'r', 
+#as I had done for the polite form - however, this wasn't changing
+#as intended, and I was unable to find the problem, so I changed the
+#full volitional form instead
+gozaimashoo = pynini.cdrewrite(T("gozarimaʃoo", "gozaimaʃoo"), "[BOS]", "[EOS]", sigmaStar)
+volitional_formal = (kuru_vf @ suru_vf @ ru_vf @ u_vf @ gozaimashoo).optimize()
 
 #######IMPERATIVE########
 #affirmative
@@ -228,11 +245,16 @@ imperative_negative = (plain_affirmative_present + T("", " na")).optimize()
 
 #tsu/chi/else
 tsu = pynini.cdrewrite(T("C", "[ts]"), sigmaStar, "u", sigmaStar).optimize()
-chi = pynini.cdrewrite(T("C", "[ch]"), sigmaStar, "i", sigmaStar).optimize()
-tV = pynini.cdrewrite(T("C", "t"), sigmaStar, sigmaStar, sigmaStar).optimize()
+chi_changes = (T("C", "[ch]") | T("[ts]", "[ch]"))
+chi = pynini.cdrewrite(chi_changes, sigmaStar, "i", sigmaStar).optimize()
+tV_changes = (T("C", "t") | T("[ts]", "t"))
+tV = pynini.cdrewrite(tV_changes, sigmaStar, vowels - "u", sigmaStar).optimize()
 
 #s->ʃi before tt
 shitta = pynini.cdrewrite(T("s", "ʃi"), sigmaStar, "tta[EOS]", sigmaStar).optimize()
+
+#k->i before tt
+k_raise = pynini.cdrewrite(T("kt", "i"), sigmaStar, "ta[EOS]", sigmaStar).optimize()
 
 #consonant delete before tt
 tt = (A("tte[EOS]") | A("tta[EOS]"))
@@ -242,13 +264,15 @@ con_delete = pynini.cdrewrite(T(consonant, ""), sigmaStar, tt, sigmaStar).optimi
 #s->ʃ
 shi = pynini.cdrewrite(T("s", "ʃ"), sigmaStar, "i", sigmaStar).optimize()
 
+#ts -> ch
+
 #fix symbols 
 symbol_changes = (T("[ts]","ts") | T("[ch]", "ch") | T("ʃ", "sh"))
 symbols = pynini.cdrewrite(symbol_changes, sigmaStar, sigmaStar, sigmaStar)
 
 
-phonology = (tsu @ chi @ tV @ shitta @ con_delete @ shi @ symbols).optimize()
-root = (kuru @ suru @ ru_drop @ u_drop).optimize()
+phonology = (tsu @ chi @ tV @ shitta @ k_raise @ con_delete @ shi @ symbols).optimize()
+
 
 
 
@@ -259,28 +283,49 @@ def paradigm(word):
         "Plain Affirmative Present: \t" + (temp @ plain_affirmative_present @ phonology).stringify(token_type="utf8"), 
         "\nPlain Affirmative Past: \t" + (temp @ plain_affirmative_past @ phonology).stringify(token_type="utf8"), 
         "\nPlain Negative Present: \t" + (temp @ plain_negative_present @ phonology).stringify(token_type="utf8"),
-        "\nPlain Negative Past: \t" + (temp @ plain_negative_past @ phonology).stringify(token_type="utf8"),
+        "\nPlain Negative Past: \t\t" + (temp @ plain_negative_past @ phonology).stringify(token_type="utf8"),
         "\nPolite Affirmative Present: \t" + (temp @ polite_affirmative_present @ phonology).stringify(token_type="utf8"),
         "\nPolite Affirmative Past: \t" + (temp @ polite_affirmative_past @ phonology).stringify(token_type="utf8"),
         "\nPolite Negative Present: \t" + (temp @ polite_negative_present @ phonology).stringify(token_type="utf8"),
-        "\nPolite Negative Past: \t" + (temp @ polite_negative_past @ phonology).stringify(token_type="utf8"),
-        "\n-te Affirmative: \t" + (temp @ te_affirmative @ phonology).stringify(token_type="utf8"),
-        "\n-te Negative: \t" + (temp @ te_negative @ phonology).stringify(token_type="utf8"),
+        "\nPolite Negative Past: \t\t" + (temp @ polite_negative_past @ phonology).stringify(token_type="utf8"),
+        "\n-te Affirmative: \t\t" + (temp @ te_affirmative @ phonology).stringify(token_type="utf8"),
+        "\n-te Negative: \t\t\t" + (temp @ te_negative @ phonology).stringify(token_type="utf8"),
         "\nConditional Plain Affirmative: \t" + (temp @ conditional_plain_affirmative @ phonology).stringify(token_type="utf8") + " / " + (temp @ conditional_plain_affirmative_2 @ phonology).stringify(token_type="utf8"), 
         "\nConditional Plain Negative: \t" + (temp @ conditional_plain_negative @ phonology).stringify(token_type="utf8") + " / " + (temp @ conditional_plain_negative_2 @ phonology).stringify(token_type="utf8"), 
-        "\nConditional Formal Affirmative: \t" + (temp @ conditional_formal_affirmative @ phonology).stringify(token_type="utf8"),
+        "\nConditional Formal Affirmative: " + (temp @ conditional_formal_affirmative @ phonology).stringify(token_type="utf8"),
         "\nConditional Formal Negative: \t" + (temp @ conditional_formal_negative @ phonology).stringify(token_type="utf8"), 
-        "\nVolitional Plain: \t" + (temp @ volitional_plain @ phonology).stringify(token_type="utf8"), 
-        "\nVolitional Formal: \t" + (temp @ volitional_formal @ phonology).stringify(token_type="utf8"),
+        "\nVolitional Plain: \t\t" + (temp @ volitional_plain @ phonology).stringify(token_type="utf8"), 
+        "\nVolitional Formal: \t\t" + (temp @ volitional_formal @ phonology).stringify(token_type="utf8"),
         "\nImperative Affirmative: \t" + (temp @ imperative_affirmative @ phonology).stringify(token_type="utf8"),
-        "\nImperative Negative: \t" + (temp @ imperative_negative @ phonology).stringify(token_type="utf8"),
+        "\nImperative Negative: \t\t" + (temp @ imperative_negative @ phonology).stringify(token_type="utf8"),
         "\n-----------")
         
 def run(tokens):
     for token in tokens:
         paradigm(token)
+        
+def info():
+    #print(info)
+    print("FST for Japanese verb conjugation. Use paradigm() for a full listing.   Currently functional for:\n\nplain affirmative present\n" +  
+        "\tplain affirmative past\n" + 
+        "\tplain negative present\n" +
+        "\tplain negative past\n" +
+        "\tpolite affirmative present\n" +
+        "\tpolite_affirmative_past\n" +
+        "\tpolite_negative_present\n" +
+        "\tpolite_negative_past\n" +
+        "\t-te affirmative\n" + 
+        "\t-te negative\n" + 
+        "\tconditional_plain_affirmative\n" +
+        "\tconditional_plain_negative\n" +
+        "\tconditional_formal_affirmative\n" +
+        "\tconditional_formal_negative\n\n")
+    print("There are three pre-made lists of tokens (tokens1, tokens2, toknns3). To run on these lists, use the run() function with the list of your choosing.\n")
+    print("To run on a word of your own choosing, use the paradigm() functionn instead, using the acceptor for your word in standard orthography. (Long vowels should be expressed with doubled vowel symbols rather than the vowel with a bar overhead. If a word is group 1/u-dropping but ends in -eru or -iru, making it ambiguous, please mark the word with a 1 at the end as a lexical marker (as in 'hairu1').)")
 
+info()
 
 ###READY-MADE TESTS###
+#run(tokens3)
 
-run(tokens2)
+
